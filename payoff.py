@@ -1,3 +1,5 @@
+ACTION_NAME = {0: "C", 1: "D"}
+
 class PayoffMatrix:
     def __init__(self, R, T, P, S):
         self.R = R
@@ -15,14 +17,13 @@ class PayoffMatrix:
         }
 
     def get_payoff(self, action0, action1):
+        """Return the payoffs for the given pair of actions."""
         return self.matrix[(action0, action1)]
+    
+    def payoff_text(self):
+        """Format the payoff matrix as text."""
+        lines = []
+        for (a0, a1), (p0, p1) in self.matrix.items():
+            lines.append(f"- ({ACTION_NAME[a0]}, {ACTION_NAME[a1]}) -> ({p0}, {p1})")
 
-ACTION_NAME = {0: "C", 1: "D"}
-
-def payoff_text(payoff):
-    """Format the payoff matrix as text."""
-    lines = []
-    for (a0, a1), (p0, p1) in payoff.matrix.items():
-        lines.append(f"- ({ACTION_NAME[a0]}, {ACTION_NAME[a1]}) -> ({p0}, {p1})")
-
-    return "\n".join(lines)
+        return "\n".join(lines)

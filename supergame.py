@@ -1,73 +1,113 @@
 import random
-from agent import llm_input
+import re
+from agent import Agent
+from payoff import PayoffMatrix
 
-## -- TO DOs -- ##
-## 1. Review and complete docstring for each function
-## 2. complete belief elicitation function and its function calls in match()
-
-
-def get_payoff(action0: int, action1: int, payoff):
-    """Docstring: Return the payoffs for the given pair of actions."""
-    return payoff.get_payoff(action0, action1)
-
-def cd_decode(num):
-    """Docstring: Convert an encoded action to 'C' or 'D'."""
+def action_decode(num):
+    """Decode numerical actions: 0 -> 'C' and 1 -> 'D'."""
     if num == 0: return "C"
     if num == 1: return "D"
 
-def action_encode(text):
-    """Docstring: Convert an LLM action response to an encoded action."""
+def action_encode(text: str):
+    """
+    Parse an LLM action response to an encoded action.
+    Any phrases related to cooperate is cast to 0, and defect to 1.
+    Return 0 by default if the response is invalid.
+    """
     t = text.strip().lower()
     if t.startswith("defect"): return 1
     if t.startswith("cooperate"): return 0
-    if t == "cooperate": return 0
-    if t == "defect": return 1
-    if "defect" in t: return 1
-    if "cooperate" in t: return 0
     if t == "c": return 0
     if t == "d": return 1
     return 0  # default is cooperate
 
-def message_request(agent, r, R, rand_stop):
-    """Docstring: Request a message from the agent for the current round."""
-    round_info = f"Round {r} out of {R} -- Messaging Phase."
-    if rand_stop:
-        round_info = f"Round {r} Messaging Phase, the game may end randomly after this round."
-
-    prompt = f"""
-    {round_info}
-    Now is the messaging phase, compose a message to the opponent in at most 50 words.
+def belief_encode(text):
     """
-    return llm_input(agent, prompt)
-
-def belief_elicitation(agent, ):
-    raise NotImplementedError
-
-def action_request(agent, r, R, rand_stop):
-    """Docstring: Request an action from the agent after the messaging phase."""
-    round_info = f"Round {r} out of {R} -- Action Phase."
-    if rand_stop:
-        round_info = f"Round {r} Action Phase, the game may end randomly after this round."
-        
-    prompt = f"""
-    {round_info}
-    Respond with EXACTLY ONE WORD: \"Cooperate\" or \"Defect\" and nothing else.
+    Parse an LLM belief report string of expected integer percentage to a float between 0 and 1.
+    Return None if the response is invalid.
     """
-    return llm_input(agent, prompt)
+    numbers = re.findall(r"\b(?:100(?:\.0+)?|\d{1,2}(?:\.\d+)?)\b", text)
+    if len(numbers) != 1:
+        return None
 
-def action_request_no_conv(agent, r, R, rand_stop):
-    """Docstring: Request an action from the agent without a messaging phase."""
-    round_info = f"Round {r} out of {R}."
+    value = float(numbers[0])
+    if value < 0.0: return 0
+    if value > 100.0: return 1
+    return value / 100.0
+    
+
+def round_info(r, R, rand_stop, phase_tag):
+    """Build the round-and-phase label used in agent prompts."""
     if rand_stop:
-        round_info = f"Round {r}, the game may end randomly after this round."
+        return f"Round {r} {phase_tag} phase. The game may end randomly after this round."
+    return f"Round {r} out of {R} -- {phase_tag} phase."
+
+def message_request(agent: Agent, r, R, rand_stop):
+    """Request a message from the agent."""
+    prompt = f"""
+    {round_info(r, R, rand_stop, "message")}
+    Compose a message to the opponent in at most 50 words.
+    """
+    return agent.llm_input(prompt)
+
+def belief_elicitation(agent: Agent, r, R, rand_stop, oppo_msg = None):
+    """
+    Elicit the agent's belief after messaging (if conversation = True) and before action selection.
+    The LLM reports an integer probability from 0 to 100, which is normalized to ``[0, 1]``
+    """
+    if oppo_msg is not None:
+        opponent_message = f"""
+        During the message phase, you opponent said:
+        =========
+        {oppo_msg}
+        =========
+        """ 
+    else:
+        opponent_message = ""
     
     prompt = f"""
-    {round_info} 
+    {round_info(r, R, rand_stop, "belief report")}
+    {opponent_message}
+    Based on the information currently available,
+    what probability in percentage do you assign to the opponent choosing Cooperate in this round?
+    Respond with EXACTLY ONE INTEGER from 0 to 100 and nothing else.
+    """
+    return belief_encode(agent.llm_input(prompt))
+
+def action_request(agent: Agent, r, R, rand_stop):
+    """Request an action from the agent after belief elicitation."""
+    prompt = f"""
+    {round_info(r, R, rand_stop, "action")}
     Respond with EXACTLY ONE WORD: \"Cooperate\" or \"Defect\" and nothing else.
     """
-    return llm_input(agent, prompt)
+    return agent.llm_input(prompt)
 
-def match(P0, P1, conversation, payoff, R, rand_stop = False, stop_prob = 0.1):    
+def end_phase(agent: Agent, payoff_mx: PayoffMatrix, r, R, rand_stop, self_action, oppo_action):
+    """
+    Report self and opponent's actions and payoffs after action phase. 
+    Then return self payoff.
+    """
+    
+    if self_action == 0: self_a = "cooperate"
+    else: self_a = "defect"
+    if oppo_action == 0: oppo_a = "cooperate"
+    else: oppo_a = "defect"
+    
+    self_payoff, oppo_payoff = payoff_mx.get_payoff(self_action, oppo_action)
+    
+    prompt = f"""
+    {round_info(r, R, rand_stop, "end")}
+    In this round, you chose to {self_a} and your opponent chose to {oppo_a}.
+    Your payoff: {self_payoff}
+    Your opponent's payoff: {oppo_payoff}
+    
+    Reply with EXACTLY "OKAY" to proceed.
+    """
+    agent.llm_input(prompt)
+    return self_payoff
+    
+
+def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, R, rand_stop = False, stop_prob = 0.1):    
     ## Record all rounds
     history = []
 
@@ -80,29 +120,29 @@ def match(P0, P1, conversation, payoff, R, rand_stop = False, stop_prob = 0.1):
     
     for r in range(1, max_rounds + 1):
         if conversation:
-            ## Request message
-            message_0 = message_request(P0, r, R, rand_stop)
-            message_1 = message_request(P1, r, R, rand_stop)
+            message_0 = message_request(p0, r, R, rand_stop)
+            message_1 = message_request(p1, r, R, rand_stop)
             
-            ## Belief elicitation
-            belief_0 = 
-            belief_1 = 
+            belief_0 = belief_elicitation(p0, r, R, rand_stop, message_1)
+            belief_1 = belief_elicitation(p1, r, R, rand_stop, message_0)
             
-            ## Request action
-            action_0 = action_encode(action_request(P0, r, R, rand_stop))
-            action_1 = action_encode(action_request(P1, r, R, rand_stop))
-            payoff_0, payoff_1 = get_payoff(action_0, action_1, payoff)
+            action_0 = action_encode(action_request(p0, r, R, rand_stop))
+            action_1 = action_encode(action_request(p1, r, R, rand_stop))
+            
+            payoff_0 = end_phase(p0, payoff_mx, r, R, rand_stop, action_0, action_1)
+            payoff_1 = end_phase(p1, payoff_mx, r, R, rand_stop, action_1, action_0)
+            
         else:
             message_0, message_1 = None, None
             
-            ## Belief elicitation
-            belief_0 = 
-            belief_1 = 
+            belief_0 = belief_elicitation(p0, r, R, rand_stop)
+            belief_1 = belief_elicitation(p1, r, R, rand_stop)
             
-            ## Request action
-            action_0 = action_encode(action_request_no_conv(P0, r, R, rand_stop))
-            action_1 = action_encode(action_request_no_conv(P1, r, R, rand_stop))
-            payoff_0, payoff_1 = get_payoff(action_0, action_1, payoff)
+            action_0 = action_encode(action_request(p0, r, R, rand_stop))
+            action_1 = action_encode(action_request(p1, r, R, rand_stop))
+            
+            payoff_0 = end_phase(p0, payoff_mx, r, R, rand_stop, action_0, action_1)
+            payoff_1 = end_phase(p1, payoff_mx, r, R, rand_stop, action_1, action_0)
         
         ## Update total payoff
         cumulative_payoff_0 += payoff_0
@@ -115,8 +155,8 @@ def match(P0, P1, conversation, payoff, R, rand_stop = False, stop_prob = 0.1):
             "message_1": message_1,
             "belief_0": belief_0,
             "belief_1": belief_1,
-            "action_0": cd_decode(action_0),
-            "action_1": cd_decode(action_1),
+            "action_0": action_decode(action_0),
+            "action_1": action_decode(action_1),
             "payoff_0": payoff_0,
             "payoff_1": payoff_1,
             "cumulative_payoff_0": cumulative_payoff_0,
