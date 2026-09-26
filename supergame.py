@@ -34,6 +34,11 @@ def belief_encode(text):
     if value < 0.0: return 0
     if value > 100.0: return 1
     return value / 100.0
+
+def match_start(self: Agent, oppo: Agent, l):
+    """Tell the agent about opponent's info in the current supergame."""
+    prompt = f"Randomized supergame {l}, you are playing against player {oppo.id}."
+    return self.llm_input(prompt)
     
 
 def round_info(r, R, rand_stop, phase_tag):
@@ -74,8 +79,18 @@ def belief_elicitation(agent: Agent, r, R, rand_stop, oppo_msg = None):
     """
     return belief_encode(agent.llm_input(prompt))
 
+def reasoning_request(agent: Agent, r, R, rand_stop, belief):
+    """Request a reasoning message from the agent after belief elicitation."""
+    prompt = f"""
+    {round_info(r, R, rand_stop, "decision reasoning")}
+    Your estimated probability that your opponent will cooperate is {belief:.0%}.
+    Briefly explain the considerations that determine your action in this round in at most 50 words.
+    DO NOT state your final action in this phase.
+    """
+    return agent.llm_input(prompt)
+
 def action_request(agent: Agent, r, R, rand_stop):
-    """Request an action from the agent after belief elicitation."""
+    """Request an action from the agent after decision reasoning."""
     prompt = f"""
     {round_info(r, R, rand_stop, "action")}
     Respond with EXACTLY ONE WORD: \"Cooperate\" or \"Defect\" and nothing else.
@@ -100,14 +115,13 @@ def end_phase(agent: Agent, payoff_mx: PayoffMatrix, r, R, rand_stop, self_actio
     In this round, you chose to {self_a} and your opponent chose to {oppo_a}.
     Your payoff: {self_payoff}
     Your opponent's payoff: {oppo_payoff}
-    
     Reply with EXACTLY "OKAY" to proceed.
     """
     agent.llm_input(prompt)
     return self_payoff
     
 
-def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, R, rand_stop = False, stop_prob = 0.1):    
+def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, l, R, rand_stop = False, stop_prob = 0.1):    
     ## Record all rounds
     history = []
 
@@ -118,31 +132,28 @@ def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, R, rand_s
     ## Random Stopping Toggle
     max_rounds = 1000000 if rand_stop else R
     
+    ## Tell match info
+    match_start(p0, p1, l)
+    match_start(p1, p0, l)
+    
     for r in range(1, max_rounds + 1):
         if conversation:
             message_0 = message_request(p0, r, R, rand_stop)
             message_1 = message_request(p1, r, R, rand_stop)
-            
-            belief_0 = belief_elicitation(p0, r, R, rand_stop, message_1)
-            belief_1 = belief_elicitation(p1, r, R, rand_stop, message_0)
-            
-            action_0 = action_encode(action_request(p0, r, R, rand_stop))
-            action_1 = action_encode(action_request(p1, r, R, rand_stop))
-            
-            payoff_0 = end_phase(p0, payoff_mx, r, R, rand_stop, action_0, action_1)
-            payoff_1 = end_phase(p1, payoff_mx, r, R, rand_stop, action_1, action_0)
-            
         else:
             message_0, message_1 = None, None
+        
+        belief_0 = belief_elicitation(p0, r, R, rand_stop, message_1)
+        belief_1 = belief_elicitation(p1, r, R, rand_stop, message_0)
+        
+        reasoning_0 = reasoning_request(p0, r, R, rand_stop, belief_0)
+        reasoning_1 = reasoning_request(p1, r, R, rand_stop, belief_1)
+         
+        action_0 = action_encode(action_request(p0, r, R, rand_stop))
+        action_1 = action_encode(action_request(p1, r, R, rand_stop))
             
-            belief_0 = belief_elicitation(p0, r, R, rand_stop)
-            belief_1 = belief_elicitation(p1, r, R, rand_stop)
-            
-            action_0 = action_encode(action_request(p0, r, R, rand_stop))
-            action_1 = action_encode(action_request(p1, r, R, rand_stop))
-            
-            payoff_0 = end_phase(p0, payoff_mx, r, R, rand_stop, action_0, action_1)
-            payoff_1 = end_phase(p1, payoff_mx, r, R, rand_stop, action_1, action_0)
+        payoff_0 = end_phase(p0, payoff_mx, r, R, rand_stop, action_0, action_1)
+        payoff_1 = end_phase(p1, payoff_mx, r, R, rand_stop, action_1, action_0)
         
         ## Update total payoff
         cumulative_payoff_0 += payoff_0
@@ -155,6 +166,8 @@ def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, R, rand_s
             "message_1": message_1,
             "belief_0": belief_0,
             "belief_1": belief_1,
+            "reasoning_0": reasoning_0,
+            "reasoning_1": reasoning_1,
             "action_0": action_decode(action_0),
             "action_1": action_decode(action_1),
             "payoff_0": payoff_0,

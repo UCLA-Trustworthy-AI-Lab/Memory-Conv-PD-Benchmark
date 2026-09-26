@@ -47,8 +47,8 @@ for model in POOL:
 
 ## Tell game rule
 for a in agents:
-    if CONV:    tell_game_rule()
-    else:       tell_game_rule_no_conv()
+    if CONV:    tell_game_rule(a, PAYOFF, R, RAND_STOP)
+    else:       tell_game_rule_no_conv(a, PAYOFF, R, RAND_STOP)
 
 
 ########################################
@@ -90,7 +90,8 @@ with open(exp_path, "w", newline = "", encoding = "utf-8-sig") as f:
         "L", "ID_0", "ID_1", "Round", "Model_0", "Model_1"
         "Action_0", "Action_1", "Belief_0", "Belief_1"
         "Payoff_0", "Payoff_1", "Cumulative_Payoff_0",
-        "Cumulative_Payoff_1", "Message_0", "Message_1"
+        "Cumulative_Payoff_1", "Message_0", "Message_1",
+        "reasoning_0", "reasoning_1"
     ])
 
 
@@ -108,18 +109,19 @@ for l in L:
         p0: Agent = agents[index]
         p1: Agent = agents[len(agents) / 2 + index]
         records = match(p0 = p0, p1 = p1, conversation = CONV, payoff_mx = PAYOFF, 
-                       R = R, rand_stop = RAND_STOP, stop_prob = STOP_PROB)
+                       l = l, R = R, rand_stop = RAND_STOP, stop_prob = STOP_PROB)
         
         ## Write in TSV
         for record in records:
             with open(exp_path, "a", newline = "", encoding = "utf-8-sig") as f:
                 writer = csv.writer(f, delimiter = "\t")
                 writer.writerow([l, p0.id, p1.id, p0.model, p1.model, record["round"],
-                                 record["action_0"], record["action_1"],
-                                 record["belief_0"], record["belief_1"],
-                                 record["payoff_0"], record["payoff_1"],
-                                 record["cumulative_payoff_0"], record["cumulative_payoff_1"],
-                                 record["message_0"], record["message_1"]])
+                                record["action_0"], record["action_1"],
+                                record["belief_0"], record["belief_1"],
+                                record["payoff_0"], record["payoff_1"],
+                                record["cumulative_payoff_0"], record["cumulative_payoff_1"],
+                                record["message_0"], record["message_1"],
+                                record["reasoning_0"], record["reasoning_1"]])
         
 ## Close memory
 for a in agents:

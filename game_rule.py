@@ -1,7 +1,7 @@
 from agent import Agent
 from payoff import PayoffMatrix
 
-def game_rule_prompt(payoff_mx: PayoffMatrix, R, L, rand_stop, conversation):
+def game_rule_prompt(payoff_mx: PayoffMatrix, R, rand_stop, conversation):
     """Build the game rules given to all agents before the experiment begins."""
 
     if rand_stop:
@@ -41,7 +41,8 @@ The round information will be reported every round.
 
     return f"""
 === GAME RULES ===
-You are a rational player who will participate in a repeated Prisoner's Dilemma experiment consisting of {L} randomized supergames.
+You are a rational player who will participate in a repeated Prisoner's Dilemma experiment 
+consisting of L number of randomized supergames. L is not disclosed to you.
 
 {horizon_rule}
 
@@ -58,6 +59,12 @@ available when making decisions in later supergames.
 In each round of a supergame:
 
 {communication_rule}
+
+- Decision Reasoning Report Phase:
+    Based on the information currently available to you, 
+    including your belief about your opponent's action, 
+    briefly explain the considerations relevant to your action decision.
+    Do not state your final action in this phase.
 
 - Action Phase:
     Choose an action from the action space:
@@ -80,13 +87,13 @@ Reply with EXACTLY "READY" to acknowledge these rules.
 """
 
 
-def tell_game_rule_no_conv(agent: Agent, payoff_mx: PayoffMatrix, R, L, rand_stop):
+def tell_game_rule_no_conv(agent: Agent, payoff_mx: PayoffMatrix, R, rand_stop):
     """Send the no-conversation game rules to one agent."""
     prompt = game_rule_prompt(payoff_mx, R, rand_stop, conversation = False)
     return agent.llm_input(prompt)
 
 
-def tell_game_rule(agent: Agent, payoff_mx: PayoffMatrix, R, L, rand_stop):
+def tell_game_rule(agent: Agent, payoff_mx: PayoffMatrix, R, rand_stop):
     """Send the conversation-enabled game rules to one agent."""
     prompt = game_rule_prompt(payoff_mx, R, rand_stop, conversation = True)
     return agent.llm_input(prompt)
