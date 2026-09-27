@@ -78,7 +78,7 @@ In each round of a supergame:
 
 === PAYOFF MATRIX ===
 
-{payoff_mx.payoff_text}
+{payoff_mx.payoff_text()}
 
 Use the available history, your belief about your opponent, and
 information from previous interactions when making your decisions.

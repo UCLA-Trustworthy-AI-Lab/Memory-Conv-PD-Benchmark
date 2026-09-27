@@ -81,9 +81,14 @@ def belief_elicitation(agent: Agent, r, R, rand_stop, oppo_msg = None):
 
 def reasoning_request(agent: Agent, r, R, rand_stop, belief):
     """Request a reasoning message from the agent after belief elicitation."""
+    if belief is None:
+        belief_text = "Your input form the belief report phase is invalid."
+    else:
+        belief_text = f"Your estimated probability that your opponent will cooperate is {belief:.0%}."
+    
     prompt = f"""
     {round_info(r, R, rand_stop, "decision reasoning")}
-    Your estimated probability that your opponent will cooperate is {belief:.0%}.
+    {belief_text}
     Briefly explain the considerations that determine your action in this round in at most 50 words.
     DO NOT state your final action in this phase.
     """
@@ -121,7 +126,7 @@ def end_phase(agent: Agent, payoff_mx: PayoffMatrix, r, R, rand_stop, self_actio
     return self_payoff
     
 
-def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, l, R, rand_stop = False, stop_prob = 0.1):    
+def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, l, R, rand_stop = False, stop_prob = 0.1, rng = None):    
     ## Record all rounds
     history = []
 
@@ -177,7 +182,7 @@ def match(p0: Agent, p1: Agent, conversation, payoff_mx: PayoffMatrix, l, R, ran
         })
         
         ## Stopping Check (Geometric)
-        if rand_stop and random.random() < stop_prob:
+        if rand_stop and rng.random() < stop_prob:
             break
     
     return history

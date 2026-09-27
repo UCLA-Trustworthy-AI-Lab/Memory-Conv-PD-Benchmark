@@ -1,0 +1,9 @@
+SEED = 40
+CONV = True
+RAND_STOP = True
+L = 2
+R = 6
+STOP_PROB = 0.16666666666666666
+NUM_EACH_AGENT = 2
+POOL = ['gpt-5-nano', 'gpt-4.1-nano', 'gpt-4o-mini']
+PAYOFF: R = 2, T = 5, P = 0, S = -1

@@ -18,7 +18,6 @@ class Agent:
     def reset_memory(self):
         """Reset the agent's response memory and initialization status."""
         self.previous_response_id = None
-        self.initialized = False
         
     def llm_input(self, prompt):
         """
